@@ -1,0 +1,25 @@
+{
+  "name": "express-starter-skills",
+  "owner": {
+    "name": "Artur Spunei"
+  },
+  "metadata": {
+    "description": "Express.js + MongoDB starter backend skills",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "backend-skills",
+      "description": "Collection of Express.js backend skills for scaffolding resources, managing relationships, building public endpoints, and generating seeds/scripts",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/skill-creator",
+        "./skills/crud-resource-scaffolder",
+        "./skills/reference-field-manager",
+        "./skills/public-endpoint-builder",
+        "./skills/db-seed-generator"
+      ]
+    }
+  ]
+}

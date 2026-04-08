@@ -54,6 +54,17 @@
 - For mutations use `hooks/use-mutation.js`
 - For paginated lists use `hooks/use-infinite-query.js`
 
+## Table pattern
+
+For admin tables, follow the pattern from `examples/components/Todos/TodoTable.jsx`:
+
+- Use `components/Tables/` system: `TableColumns`, `TableLoading`, `TableError`, `TableSuccess`
+- Use `hooks/use-infinite-query.js` for paginated data fetching
+- Use `components/Buttons/LoadMoreOnClick` or `LoadMoreOnScroll` for pagination
+- Define column configs in `data/` folder using TanStack React Table format (`id`, `header`, `accessorKey`, optional `cell` component)
+- Handle all 3 states: `pending` → `TableLoading`, `error` → `TableError`, `success` → `TableSuccess`
+- Use `Bone` component for loading skeletons (via `extraClass` on columns for width hints)
+
 ## Design rules
 
 - Use Tailwind CSS utility classes for styling
@@ -75,6 +86,7 @@
 ## Skills
 
 Development pattern skills are in `skills/skills/`. Key skills:
+
 - `admin-crud-scaffold` — scaffold full CRUD for a new admin entity
 - `form-builder` — React Hook Form + Yup with HookForm/Field system
 - `api-hook-wiring` — connect API services with React Query hooks

@@ -3290,184 +3290,533 @@ Use these severity levels consistently:
 
 # MODE 3: Next.js SEO Implementation
 
-This mode guides you through implementing SEO features in a Next.js Pages Router project. Read `references/nextjs-seo-patterns.md` for complete code examples.
+Implementing production-grade SEO in a Next.js Pages Router project. The goal is real ranking signals that survive Google algorithm updates — never tricks, never fabricated data.
 
-## Mode 3 Step 1: Assess Current SEO State
+**Read these references on demand** (do NOT auto-load all of them):
 
-Scan the project to understand what SEO infrastructure already exists:
-1. Check if `next-seo` is installed (`package.json`)
-2. Check `_app.js` for `DefaultSeo` configuration
-3. Check `_document.js` for meta tags, fonts, favicon
-4. Check `site.config.js` for base URL, site name, description
-5. Scan pages for existing `NextSeo` or `next/head` usage
-6. Check if `next-sitemap` is installed and configured
-7. Check for `robots.txt` in `public/`
-8. Look for any structured data / JSON-LD
+- `references/nextjs-seo-patterns.md` — copy-paste code snippets for the stack
+- `references/schema-catalog.md` — full schema.org type reference with templates and field-by-field guidance
+- `references/anti-patterns.md` — extended catalog of what to refuse and why, with detection commands
+- `references/audit-checklist.md` — line-by-line audit procedure
 
-## Mode 3 Step 2: Implement Per-Page SEO
+Pull only the section you need. Each is a focused doc; reading all of them at once wastes context.
 
-### DefaultSeo in _app.js
+## Mode 3 Step 0: Discovery (MANDATORY before any change)
 
-Set up default SEO values that apply to all pages:
+Skipping this is the #1 cause of bad SEO advice. Run this checklist and output findings as a short table before recommending or writing code.
+
+```bash
+# 1. Router and SEO library
+grep -E '"next"|"next-seo"|"next-sitemap"' package.json
+ls pages/ app/ 2>/dev/null         # which router?
+
+# 2. What's already implemented? grep for these markers:
+grep -rE 'NextSeo|DefaultSeo' --include='*.js' --include='*.jsx' pages/ | head -20
+grep -rE 'application/ld\+json|ProductJsonLd|ArticleJsonLd' --include='*.js' --include='*.jsx' . | head
+ls pages/sitemap.xml.js next-sitemap.config.js 2>/dev/null
+ls public/robots.txt 2>/dev/null
+
+# 3. Backend SEO fields
+grep -rE 'metaTitle|metaDescription|seo:' models/ 2>/dev/null | head -10
+
+# 4. Live snapshot of the deployed site
+curl -sL https://[domain]/ | grep -iE '<title>|name="description"|rel="canonical"|application/ld\+json' | head -20
+
+# 5. Multi-language?
+cat languages/*.json 2>/dev/null | head -5
+cat site.config.js 2>/dev/null | grep -E 'languages|locale'
+```
+
+Output a discovery table:
+
+| Area | Status | Notes |
+|---|---|---|
+| Router | Pages Router | `pages/` |
+| SEO lib | next-seo 6.8.0 | installed |
+| DefaultSeo | absent | wire up in `_app.js` |
+| ProductJsonLd | present | review for fabricated fields |
+| Sitemap | dynamic via `pages/sitemap.xml.js` | OK |
+| ... | | |
+
+Then proceed.
+
+## Mode 3 Step 1: Foundations (every public page)
+
+Each public page MUST have the NextSeo quartet: `title`, `description`, `canonical`, `openGraph`. Missing any one of these is a P0/P1 bug.
+
+### DefaultSeo in `_app.js`
+
+Defaults that apply site-wide. NextSeo on a specific page overrides them.
 
 ```jsx
 import { DefaultSeo } from 'next-seo';
 import config from '@site.config';
 
-// In _app.js component
 <DefaultSeo
-  titleTemplate={`%s — ${config.siteName}`}
-  defaultTitle={config.siteName}
-  description={config.description}
+  titleTemplate={`%s | ${config.sitename}`}
+  defaultTitle={config.title}
+  description={config.description.trim()}
   openGraph={{
     type: 'website',
-    locale: 'en_US',
-    url: config.baseUrl,
-    siteName: config.siteName,
+    locale: 'ro_RO',                 // match content language
+    url: config.baseurl,
+    site_name: config.sitename,
+    images: [{
+      url: `${config.baseurl}/images/og-default.jpg`,  // representative image, NOT logo
+      width: 1200,
+      height: 630,
+      alt: config.sitename,
+    }],
   }}
+  twitter={{ cardType: 'summary_large_image' }}
 />
 ```
 
 ### NextSeo on Individual Pages
 
-Each public page should have specific SEO:
-
 ```jsx
 import { NextSeo } from 'next-seo';
+import config from '@site.config';
 
 <NextSeo
-  title="Page Title"
-  description="Compelling description under 160 characters"
-  canonical={`${config.baseUrl}/page-slug`}
+  title={seoTitle}                           // 50-60 chars, keyword first, brand last
+  description={seoDescription}                // 140-160 chars, value prop + CTA
+  canonical={`${config.baseurl}${path}`}     // absolute URL, no junk query params
   openGraph={{
-    title: 'Page Title',
-    description: 'Description for social sharing',
-    url: `${config.baseUrl}/page-slug`,
-    images: [{ url: `${config.baseUrl}/images/og-image.jpg`, width: 1200, height: 630, alt: 'Description' }],
+    title: seoTitle,
+    description: seoDescription,
+    url: `${config.baseurl}${path}`,
+    type: 'website',                          // or 'article' / 'product'
+    site_name: config.sitename,
+    images: [{
+      url: ogImage,                           // 1200x630, < 1MB, representative
+      width: 1200,
+      height: 630,
+      alt: seoTitle,
+    }],
   }}
 />
 ```
 
-### Dynamic Pages — SEO from Data
+**Critical rules:**
+- Canonical is ALWAYS present on indexable pages — even the homepage. Without it, `?utm=...` splits link equity.
+- OG image is a real image of the page content, NOT the company logo. Logo goes in `Organization.logo`.
+- Locale matches `<html lang>` from `_document.js`.
+- Each title and description is UNIQUE across the site. Grep for duplicates before shipping.
 
-For pages like `/blog/[slug].js` or `/produse/[slug].js`, populate SEO from the fetched data:
+### Dynamic pages — fallback strategy
 
-```jsx
-export async function getServerSideProps({ params }) {
-  const item = await publicApi.getBySlug(params.slug);
-  return { props: { item } };
-}
-
-const Page = ({ item }) => (
-  <>
-    <NextSeo
-      title={item.seoTitle || item.title}
-      description={item.metaDescription || item.subtitle}
-      canonical={`${config.baseUrl}/blog/${item.slug}`}
-      openGraph={{
-        title: item.seoTitle || item.title,
-        description: item.metaDescription || item.subtitle,
-        images: item.featuredImage ? [{ url: item.featuredImage.medium?.path }] : [],
-      }}
-    />
-    {/* Page content */}
-  </>
-);
-```
-
-## Mode 3 Step 3: Add SEO Fields to Data Models
-
-Add SEO fields to entity validation schemas so content editors can customize SEO per item:
-
-```js
-// In models/{entity}.js — add these fields
-seoTitle: Yup.string(),
-metaDescription: Yup.string(),
-slug: Yup.string()
-  .required('Slug is required')
-  .matches(/^[a-z0-9_-]+$/, 'Only lowercase letters, numbers, hyphens, underscores')
-  .min(2).max(100),
-```
-
-```js
-// In initialValues
-seoTitle: '',
-metaDescription: '',
-slug: '',
-```
-
-Add the form fields using the project's `SlugInput` and `Field` components:
-```jsx
-<SlugInput sourceField="title" placeholder="url-slug" required />
-<Field as={Input} name="seoTitle" label="SEO Title" placeholder="Custom SEO title (optional)" />
-<Field as={Textarea} name="metaDescription" label="Meta Description" placeholder="SEO description for search engines (optional)" rows={3} />
-```
-
-## Mode 3 Step 4: Structured Data / JSON-LD
-
-Add structured data for rich search results. Create a reusable component:
+NEVER let `title` or `description` be `undefined`. Build a helper once per project, reuse everywhere.
 
 ```jsx
-// components/JsonLd.jsx
+// functions/build-seo.js
+import config from '@site.config';
+
+const stripHtml = (s = '') => s.replace(/<[^>]+>/g, '');
+const truncate = (s, n) => (s.length > n ? `${s.slice(0, n - 1).trim()}…` : s);
+
+export const buildSeo = (entity, path, type = 'website') => {
+  const seoTitle =
+    entity.seo?.metaTitle ||
+    `${entity.title}${entity.category?.name ? ` – ${entity.category.name}` : ''} | ${config.sitename}`;
+
+  const seoDescription =
+    entity.seo?.metaDescription ||
+    truncate(stripHtml(entity.description || entity.subtitle || ''), 155) ||
+    config.description.trim();
+
+  return {
+    title: seoTitle,
+    description: seoDescription,
+    canonical: `${config.baseurl}${path}`,
+    openGraph: {
+      title: seoTitle,
+      description: seoDescription,
+      url: `${config.baseurl}${path}`,
+      type,
+      site_name: config.sitename,
+      images: entity.featuredImage?.url
+        ? [{ url: entity.featuredImage.url, width: 1200, height: 630, alt: seoTitle }]
+        : [],
+    },
+  };
+};
+```
+
+Then in the page:
+
+```jsx
+import { buildSeo } from '@functions';
+<NextSeo {...buildSeo(article, `/blog/${article.slug}`, 'article')} />
+```
+
+### `<html lang>` matches content
+
+In `pages/_document.js`:
+
+```jsx
+<Html lang="ro">
+```
+
+If multi-language, set dynamically via `__NEXT_DATA__.locale`.
+
+### Sitemap that pulls from the API
+
+For backend-driven projects, generate at request time, not at build:
+
+```jsx
+// pages/sitemap.xml.js
+import { getAllPublicUrls } from '@api/public';
+import config from '@site.config';
+
+const buildXml = (urls) => `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map(u => `  <url>
+    <loc>${u.loc}</loc>
+    ${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ''}
+    <changefreq>${u.changefreq || 'weekly'}</changefreq>
+    <priority>${u.priority || 0.5}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+export const getServerSideProps = async ({ res }) => {
+  const urls = await getAllPublicUrls();  // paginate per_page=100+
+  res.setHeader('Content-Type', 'text/xml');
+  res.write(buildXml(urls));
+  res.end();
+  return { props: {} };
+};
+
+const Page = () => null;
+export default Page;
+```
+
+For static sites: use `next-sitemap` postbuild step. See `references/nextjs-seo-patterns.md`.
+
+### robots.txt
+
+`public/robots.txt`:
+
+```
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api
+Disallow: /login
+Disallow: /signup
+Disallow: /reset
+Disallow: /confirm
+
+Sitemap: https://[domain]/sitemap.xml
+```
+
+Update with every new auth-gated route.
+
+### Noindex on thin/private pages
+
+Pages with no real content yet (empty portfolio), thank-you pages, internal-only:
+
+```jsx
+<NextSeo noindex={true} nofollow={true} />
+```
+
+Remove the noindex the moment real content lands. Quarterly grep for stray `noindex` markers — leaving one on by mistake is a common bug.
+
+## Mode 3 Step 2: Structured Data (JSON-LD)
+
+Structured data is **a claim to Google about your business**. Fabricating any field is a Google spam policy violation and can trigger manual actions. ALWAYS use real data.
+
+**Read `references/schema-catalog.md` for full templates and field-by-field guidance** for: Organization, LocalBusiness, Product, Article, BreadcrumbList, FAQPage, WebSite, ItemList, Service, Event, Person, VideoObject, HowTo.
+
+### The reusable JsonLd component
+
+```jsx
+// components/Seo/JsonLd.jsx
 import Head from 'next/head';
 
 const JsonLd = ({ data }) => (
   <Head>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
   </Head>
 );
 
 export default JsonLd;
 ```
 
-Common schemas:
-- **Organization** — on homepage
-- **Article** — on blog posts
-- **Product** — on product pages
-- **BreadcrumbList** — on all pages with breadcrumbs
-- **FAQ** — on FAQ sections
+Use this for schemas next-seo doesn't expose directly (Organization, LocalBusiness, WebSite, ItemList, etc.).
 
-## Mode 3 Step 5: Sitemap & Robots.txt
+### Recommended schemas per page type
 
-### Sitemap with next-sitemap
+| Page | Schemas |
+|---|---|
+| Homepage | `Organization` + `WebSite` (with SearchAction if search exists) |
+| Contact | `LocalBusiness` (one per physical location) + `BreadcrumbList` |
+| Category listing | `CollectionPage` + `ItemList` + `BreadcrumbList` |
+| Product detail | `Product` (with or without `offers`) + `BreadcrumbList` |
+| Blog index | `Blog` + `BreadcrumbList` |
+| Blog post | `BlogPosting` + `BreadcrumbList` + linked author `Person` page |
+| FAQ section | `FAQPage` (only with visible Q&A on page) |
 
-Install and configure:
-```bash
-npm install next-sitemap
+Multiple schemas per page are fine and recommended. Each in its own `<script>` block.
+
+### Product schema — the danger zone
+
+The most common bug source in this stack. Forbidden patterns I keep finding:
+
+- `price: '0.00'` with `priceCurrency: 'RON'` and `availability: InStock` → invalid pricing
+- `availability: 'https://schema.org/Discontinued'` on active products → Google de-prioritizes rich snippets
+- `gtin: product._id` → Mongo IDs are NOT valid GTINs (8/12/13/14 digits with checksum)
+- `sku: product._id` → Mongo IDs are NOT SKUs; if no real SKU exists, omit the field
+- `aggregateRating: { ratingValue: '4.8', reviewCount: '102' }` with no real reviews displayed → spam policy violation
+
+**If the site doesn't sell directly online** (B2B catalog, distribution model — common for the projects in this codebase):
+
+```jsx
+<ProductJsonLd
+  productName={product.title}
+  description={product.description}
+  images={productImages}
+  brand={{ name: 'BrandName' }}
+  manufacturerName="BrandName"
+  sku={product.sku}                          // real SKU only — not _id
+  category={product.category?.name}
+  // NO offers block. NO price. NO availability hardcoded.
+/>
 ```
 
-Create `next-sitemap.config.js`:
+If `offers` IS provided, it must reflect reality:
+
+```jsx
+offers: product.price ? {
+  price: String(product.price),
+  priceCurrency: 'RON',
+  availability: product.inStock
+    ? 'https://schema.org/InStock'
+    : 'https://schema.org/OutOfStock',
+  url: productUrl,
+  seller: { name: 'BrandName' },
+  priceValidUntil: '2026-12-31',
+} : undefined
+```
+
+See `references/anti-patterns.md` for the full catalog of forbidden patterns with detection grep commands.
+
+### Validate every schema block
+
+Before declaring schema done:
+1. Paste raw JSON into https://validator.schema.org/ — fix all ERRORs.
+2. Run https://search.google.com/test/rich-results — confirms Google parses it.
+3. After deploy, use Search Console URL Inspection to confirm Google sees it live.
+
+## Mode 3 Step 3: Backend SEO Model Conventions
+
+Public-facing entities (Product, Article, Category, etc.) need SEO fields:
+
 ```js
-module.exports = {
-  siteUrl: process.env.NEXT_PUBLIC_BASE_URL || 'https://example.com',
-  generateRobotsTxt: true,
-  sitemapSize: 7000,
-  exclude: ['/admin/*', '/login', '/signup', '/forgot', '/reset/*', '/confirm/*', '/maintenance'],
-  robotsTxtOptions: {
-    additionalSitemaps: [],
-    policies: [
-      { userAgent: '*', allow: '/' },
-      { userAgent: '*', disallow: ['/admin', '/api'] },
-    ],
-  },
-};
+// Mongoose schema
+slug: { type: String, required: true, unique: true, index: true, lowercase: true, trim: true },
+seo: {
+  metaTitle: { type: String, trim: true, maxlength: 70 },
+  metaDescription: { type: String, trim: true, maxlength: 170 },
+},
 ```
 
-Add to `package.json` scripts:
-```json
-"postbuild": "next-sitemap"
+```js
+// Yup model validation (frontend admin form)
+import * as Yup from 'yup';
+
+// In Yup.object().shape({...})
+slug: Yup.string()
+  .required('Slug is required')
+  .matches(/^[a-z0-9_-]+$/, 'Only lowercase, numbers, hyphens, underscores')
+  .min(2, 'At least 2 characters')
+  .max(100, 'Max 100 characters'),
+seo: Yup.object({
+  metaTitle: Yup.string().max(70, 'Max 70 characters'),
+  metaDescription: Yup.string().max(170, 'Max 170 characters'),
+}),
+
+// In initialValues
+slug: '',
+seo: { metaTitle: '', metaDescription: '' },
 ```
 
-## Mode 3 Step 6: Technical SEO Checks
+Admin form fields using the project's `SlugInput` + `Field` system:
 
-When implementing, also verify:
-- All images have `alt` text
-- Internal links use Next.js `<Link>` component (not `<a>`)
-- No duplicate `<title>` tags (check for both `next/head` and `next-seo` usage)
-- Canonical URLs are consistent (trailing slash, www vs non-www)
-- Middleware handles redirects properly (www → non-www)
-- 404 page returns proper status code
-- Dynamic routes return `{ notFound: true }` for missing content
+```jsx
+import { Input, Textarea, SlugInput } from '@components/Fields';
+import { Field } from '@components/HookForm';
+
+<SlugInput sourceField="title" name="slug" placeholder="url-slug" required />
+<Field as={Input} name="seo.metaTitle" label="SEO Title" placeholder="Custom title (optional, fallback: auto)" />
+<Field as={Textarea} name="seo.metaDescription" label="Meta Description" placeholder="Max 160 chars (optional)" rows={3} />
+```
+
+### Backfill script for missing SEO fields
+
+For sites with hundreds of entities where admins haven't set `seo.metaTitle`, write a one-time script:
+
+```js
+// scripts/backfill-seo.js (in the API project)
+const Product = require('../models/product');
+const ProductType = require('../models/productType');
+
+(async () => {
+  const products = await Product.find({ 'seo.metaTitle': { $in: [null, ''] } }).populate('category productType');
+  for (const p of products) {
+    p.seo = p.seo || {};
+    p.seo.metaTitle = `${p.title} – ${p.category?.name || ''} ${p.productType?.name || ''} | BrandName`.trim().slice(0, 70);
+    p.seo.metaDescription = (p.description || '').replace(/<[^>]+>/g, '').slice(0, 160);
+    await p.save();
+  }
+  console.log(`Backfilled ${products.length} products`);
+  process.exit(0);
+})();
+```
+
+Run via `node scripts/backfill-seo.js`. Document in `docs/` so it can be re-run after content imports. Skip entities that already have custom titles.
+
+## Mode 3 Step 4: Content & On-Page
+
+Schema is half the story. Google reads the page too.
+
+- **Exactly one `<h1>` per page.** Contains the primary keyword. H2 for sections, H3 for sub-sections. No skipping levels.
+- **Title craft**: primary keyword first, modifier, brand last. 50-60 chars. Unique sitewide.
+- **Description craft**: primary keyword once (CTR bold), value prop, CTA verb. 140-160 chars. Unique sitewide.
+- **URLs**: kebab-case, descriptive, short, stable. Set a 301 redirect if a slug must change.
+- **Internal links**: descriptive anchor text (not "click here"). Every leaf page reachable in ≤ 3 clicks from homepage. No orphans.
+- **Images**: every `<img>` has descriptive `alt`. Use `next/image` with explicit width/height (kills CLS). `priority` for above-fold images. Real filenames (`usa-metalica-prestige.jpg` beats `IMG_4823.jpg`).
+
+### Core Web Vitals (the speed half of SEO)
+
+Targets: LCP < 2.5s, INP < 200ms, CLS < 0.1.
+
+Quick wins in this stack:
+- `next/image` with explicit dimensions (kills CLS)
+- `priority` prop on the LCP image (preloads it)
+- `<Script strategy="lazyOnload">` for analytics, chat widgets
+- `<link rel="preconnect">` for fonts and critical third-parties
+- Self-host fonts when possible (`font-display: swap`)
+
+For deep performance work, defer to the `website-speed-audit` skill.
+
+## Mode 3 Step 5: Advanced
+
+### E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness)
+
+Especially for YMYL content. Real authors with real bios, public profiles, and `Person` schema linked from `BlogPosting.author`. About page with company history, founding year, leadership. Real address, real phone, verifiable reviews.
+
+NEVER use stock photos with fictional author names. Easily detected via reverse image search.
+
+### Hreflang (only if truly multi-language)
+
+If `site.config.js` lists multiple languages AND each language has its own URL space AND each has real, unique content:
+
+```jsx
+<NextSeo
+  languageAlternates={[
+    { hrefLang: 'ro', href: 'https://example.com/' },
+    { hrefLang: 'en', href: 'https://example.com/en/' },
+    { hrefLang: 'x-default', href: 'https://example.com/' },
+  ]}
+/>
+```
+
+If `languages/` only has one populated locale: do NOT add hreflang. Empty alt-lang versions create soft-404 perception.
+
+### Canonical strategy for filtered/paginated routes
+
+- Self-canonical on every indexable variant
+- Filters that don't change "what the page is about" → canonical back to unfiltered category
+- Paginated pages → self-canonical (each page is its own destination)
+
+Decide explicitly per project. Wrong canonicals delete pages from the index.
+
+### Redirects strategy in `next.config.js`
+
+```js
+async redirects() {
+  return [
+    { source: '/old-path', destination: '/new-path', permanent: true },  // 301
+  ];
+},
+```
+
+Use 301 for permanent moves. 302 doesn't pass link equity — only use for genuinely temporary changes.
+
+### OG image generation (advanced)
+
+For 1000+ pages, generate OG images dynamically via `@vercel/og` or a backend image service. Static per category, dynamic per leaf entity. Skip for small sites — manual OG images per section are fine under ~100 pages.
+
+## Mode 3 Step 6: Validation (MANDATORY after any change)
+
+Never declare SEO work done without running this.
+
+```bash
+# Build the site
+npm run build
+
+# After deploy, snapshot key URLs
+curl -sL https://[domain]/[path] | grep -iE '<title>|description|canonical|application/ld\+json' | head -20
+
+# Validate JSON-LD
+echo "https://validator.schema.org/"
+echo "https://search.google.com/test/rich-results?url=https://[domain]/[path]"
+
+# Check for build warnings
+npm run build 2>&1 | grep -iE 'warning|error'
+```
+
+Checklist before marking work complete:
+
+- [ ] `<title>` present, unique, 50-60 chars
+- [ ] `<meta name="description">` present, unique, 140-160 chars
+- [ ] `<link rel="canonical">` present with absolute URL, self-canonical
+- [ ] OG tags present with real page image (not logo)
+- [ ] Twitter card present
+- [ ] JSON-LD validates with no errors in https://validator.schema.org
+- [ ] No fabricated fields in any schema (reviews, prices, GTINs)
+- [ ] No `noindex` on pages that should be indexed
+- [ ] `<html lang>` matches content language
+- [ ] All `<img>` have descriptive `alt` attributes
+- [ ] Exactly one `<h1>` per page
+- [ ] Sitemap includes new pages with `lastmod`
+- [ ] Page is linked from at least one other indexable page
+- [ ] Page loads in < 3s on 4G (Lighthouse)
+- [ ] Robots.txt allows the page; admin/auth routes blocked
+- [ ] Build passes with no SEO-related warnings
+
+### Search Console hygiene (post-deploy)
+
+- Submit updated sitemap
+- Check "Pages" report for `Discovered – currently not indexed` warnings
+- Inspect new URLs with the URL Inspection tool to confirm Google sees the schema
+- Watch for "Search Appearance" errors weekly for the first month after major changes
+
+## Mode 3 Anti-Patterns Summary
+
+Refuse if the user requests any of these. Full catalog with detection grep commands in `references/anti-patterns.md`.
+
+| Anti-pattern | Why |
+|---|---|
+| Fake `aggregateRating` / `reviewCount` | Spam policy violation; manual penalty risk |
+| Stock-photo authors with invented bios | E-E-A-T violation; detectable via reverse image search |
+| Doorway pages (city × service grid) | Manual action trigger |
+| Keyword stuffing in titles/descriptions | CTR drops; potential penalty |
+| Identical meta descriptions sitewide | Google ignores them and rewrites |
+| Hidden text or cloaking | Cloaking penalty |
+| Buying backlinks | Increasingly detected; recovery 6-12 months |
+| Schema marking content not visible on page | Spam policy violation |
+| Mongo `_id` as `sku` or `gtin` | Search Console warnings |
+| `Product` with `price: '0.00'` + `InStock` | Invalid pricing |
+| `Product` with `Discontinued` on active products | De-ranks rich snippets |
+| Hreflang for unpopulated languages | Soft-404 perception |
+| FAQPage schema without visible Q&A | Spam policy |
+| Stray `noindex` post-launch | Page never indexed |
+| Cross-page canonical to unrelated content | Page de-indexed |
 
 ---
 
@@ -3476,9 +3825,12 @@ When implementing, also verify:
 When performing a Mode 2 audit on a Next.js project, also check:
 
 1. **Rendering strategy** — Are pages using SSR (`getServerSideProps`), SSG (`getStaticProps`), or client-only? SSG with ISR is best for SEO; pure client rendering is worst.
-2. **Dynamic route canonicals** — Do dynamic pages (`[slug].js`, `[id].js`) set correct canonical URLs?
+2. **Dynamic route canonicals** — Do dynamic pages (`[slug].js`, `[id].js`) set correct canonical URLs? Common gap on category routes.
 3. **next-seo consistency** — Are all public pages using `NextSeo`? Is `DefaultSeo` configured in `_app.js`?
 4. **Head tag conflicts** — Check for both `next/head` and `next-seo` on the same page (can cause duplicate tags).
 5. **Image alt text** — Scan `<Image>` and `<img>` components for missing `alt` attributes.
 6. **Internal linking** — Are internal links using `next/link` for client-side navigation? Or are there `<a href>` tags that cause full page reloads?
 7. **Middleware redirects** — Check `middleware.js` for proper SEO redirects (www normalization, trailing slash).
+8. **ProductJsonLd field hygiene** — Check `pages/produse/[slug].js` (or equivalent) for: hardcoded `price: '0.00'`, hardcoded `availability: 'Discontinued'`, `_id` used as `sku`/`gtin`, fabricated `aggregateRating`. Each is a P0 fix.
+9. **Backend SEO field exposure** — Verify entities have `seo.metaTitle`, `seo.metaDescription`, and `slug` fields. Verify admin UI exposes them.
+10. **Canonical absence on dynamic routes** — Common: category pages use NextSeo without `canonical` while product/article pages have it. Audit every dynamic route.

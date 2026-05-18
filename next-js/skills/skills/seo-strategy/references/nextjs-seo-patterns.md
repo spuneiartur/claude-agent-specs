@@ -85,8 +85,8 @@ For pages like `/produse/[slug].js`:
 const ProductPage = ({ product }) => (
   <>
     <NextSeo
-      title={product.seoTitle || product.name}
-      description={product.metaDescription || product.description}
+      title={product.seo?.metaTitle || `${product.name} | ${config.siteName}`}
+      description={product.seo?.metaDescription || product.description?.slice(0, 155)}
       canonical={`${config.baseUrl}/produse/${product.slug}`}
       openGraph={{
         type: 'product',
@@ -101,16 +101,38 @@ const ProductPage = ({ product }) => (
       name: product.name,
       description: product.description,
       image: product.images?.map(img => img.original?.path),
-      offers: product.price ? {
-        '@type': 'Offer',
-        price: product.price,
-        priceCurrency: 'RON',
-        availability: 'https://schema.org/InStock',
-      } : undefined,
+      brand: { '@type': 'Brand', name: config.siteName },
+      manufacturer: { '@type': 'Organization', name: config.siteName, url: config.baseUrl },
+      ...(product.sku && { sku: product.sku }),
+      // Only include offers if real price exists. Omit entirely for B2B catalogs.
+      ...(product.price && {
+        offers: {
+          '@type': 'Offer',
+          price: String(product.price),
+          priceCurrency: 'RON',
+          availability: product.inStock
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/OutOfStock',
+          url: `${config.baseUrl}/produse/${product.slug}`,
+          seller: { '@type': 'Organization', name: config.siteName },
+        },
+      }),
     }} />
   </>
 );
 ```
+
+**Forbidden patterns** (each one a Search Console warning or spam policy risk):
+
+- `price: '0.00'` with `priceCurrency: 'RON'` and `availability: 'InStock'` — invalid pricing
+- `availability: 'https://schema.org/Discontinued'` on active products — Google removes from Shopping, de-prioritizes rich snippets
+- `gtin: product._id` — Mongo IDs are NOT valid GTINs (8/12/13/14 digits with checksum)
+- `sku: product._id` — Mongo IDs are NOT SKUs; if no real SKU exists, omit the field
+- `aggregateRating: { ratingValue: '4.8', reviewCount: '102' }` hardcoded with no real reviews — spam policy violation
+
+**For B2B catalogs / sites that don't sell directly online**: omit `offers` entirely. The schema then describes the product without claiming a purchase channel.
+
+See `references/anti-patterns.md` for full anti-pattern catalog with detection grep commands.
 
 ## SEO Model Fields
 

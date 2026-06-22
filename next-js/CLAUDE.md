@@ -48,6 +48,12 @@
 - **Write short files, maximum 40-50 lines of code per file**
 - Use comments and empty lines to delimit groups of code
 - Use `@aliases` instead of relative paths: `@api`, `@auth`, `@components`, `@constants`, `@css`, `@data`, `@functions`, `@hooks`, `@lib`, `@models`, `@site.config`
+- Import through the alias **barrel** with **named imports**, not deep default imports — including sibling files in the same folder (via the sub-barrel). Each folder has an `index.js` barrel; add new exports to it.
+  - ✅ `import { Button, Link } from '@components';`
+  - ✅ `import { projects } from '@data';` · `import { useScrollProgress } from '@hooks';`
+  - ✅ `import { PortfolioCta, PortfolioGrid } from '@components/Portfolio';`
+  - ❌ `import Button from '@components/Button';` · `import PortfolioGrid from './PortfolioGrid';`
+  - Keep each barrel ordered so a module's dependencies are exported before the modules that consume them (avoids circular-init issues).
 - Do NOT add new NPM packages unless explicitly instructed
 - Always search for existing custom components first (Button.jsx, Image.jsx, etc.) before using raw HTML elements
 - For data fetching use `hooks/use-query.js`
@@ -95,3 +101,4 @@ Development pattern skills are in `skills/skills/`. Key skills:
 - `custom-hook` — create custom hooks
 - `website-speed-audit` — performance audit and image/video optimization
 - `seo-strategy` — SEO content optimization + Next.js SEO implementation
+- `cookie-consent-gdpr` — wire 3rd-party tags (GTM, GA4, Meta Pixel, embeds) into the Cookie Consent + GDPR system using SSR Consent Mode v2 or client-side gating

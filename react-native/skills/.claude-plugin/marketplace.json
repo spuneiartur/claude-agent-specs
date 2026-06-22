@@ -1,0 +1,28 @@
+{
+  "name": "react-native-expo-skills",
+  "owner": {
+    "name": "Artur Spunei",
+    "email": "artur.spunei@bolt.eu"
+  },
+  "metadata": {
+    "description": "React Native + Expo development pattern skills (resto-native starter)",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "react-native-expo-skills",
+      "description": "Scaffolding skills for the React Native + Expo starter: expo-router screens, unistyles components, react-hook-form forms, axios api services, and theming",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/screen-scaffold",
+        "./skills/component-factory",
+        "./skills/form-builder",
+        "./skills/api-service",
+        "./skills/data-fetching",
+        "./skills/theme-styling",
+        "./skills/skill-creator"
+      ]
+    }
+  ]
+}

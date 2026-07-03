@@ -46,7 +46,7 @@
 - Use ES6 imports (not `require`) in all new files
 - Use only one default export per file, except `index.js` barrel files
 - **Write short files, maximum 40-50 lines of code per file**
-- Use comments and empty lines to delimit groups of code
+- **Avoid comments.** Write self-explanatory code (clear names, small functions) instead. Add a comment ONLY as an exception — to flag a non-obvious edge case, a deliberate workaround, or a "why" that the code can't express on its own. Never narrate what the code already says. Use empty lines (not comments) to delimit groups of code.
 - Use `@aliases` instead of relative paths: `@api`, `@auth`, `@components`, `@constants`, `@css`, `@data`, `@functions`, `@hooks`, `@lib`, `@models`, `@site.config`
 - Import through the alias **barrel** with **named imports**, not deep default imports — including sibling files in the same folder (via the sub-barrel). Each folder has an `index.js` barrel; add new exports to it.
   - ✅ `import { Button, Link } from '@components';`

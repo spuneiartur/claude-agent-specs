@@ -43,6 +43,7 @@ Configured in `jsconfig.json` and `babel.config.json`.
 
 - ES6 imports ordered A-Z. No `require`.
 - One default export per file (except barrel `index.js` files)
+- **Avoid comments.** Write self-explanatory code (clear names, small functions) instead. Add a comment ONLY as an exception — to flag a non-obvious edge case, a deliberate workaround, or a "why" the code can't express. Never narrate what the code already says.
 - Max 40-50 lines per file — single responsibility
 - No `try/catch` in controllers — uses `express-async-errors`
 - Return `200` HTTP status on success (not 201/204)

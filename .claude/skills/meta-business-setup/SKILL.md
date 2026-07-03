@@ -99,34 +99,18 @@ This is enough for a one-off pull (e.g. `meta-fetch.py` creative/performance exp
 
 Meta's Leads API (`/{page_id}/leadgen_forms`, `/{form_id}/leads`) structurally
 rejects User Access Tokens regardless of scopes granted on them. It requires a Page
-Access Token.
+Access Token, and getting there has two separate gotchas — hitting either one alone
+still leaves you stuck, so do both in order.
 
-- Permissions needed on top of the above: `leads_retrieval`, `pages_show_list`,
-  `pages_read_engagement`.
-- **Gotcha**: `leads_retrieval` sometimes doesn't get granted even if you tick it in
-  Explorer — always verify after generating with:
-  ```
-  GET /me/permissions?access_token=<TOKEN>
-  ```
-  and confirm `leads_retrieval` shows `"status": "granted"`. If missing, redo the
-  OAuth popup and use **"Editează setările"** (not the quick "Reconectează-te") to
-  reach the explicit Page-selection screen.
-- You can derive a Page token from an already-authorized User token instead of
-  fighting the Explorer's "User or Page" dropdown:
-  ```
-  GET /me/accounts?fields=id,name,access_token&access_token=<USER_TOKEN>
-  ```
-  Each Page you administer comes back with its own `access_token`.
+### Gotcha 1 — the Page belongs to a different Business Portfolio than your app
 
-### If `/me/accounts` returns an empty list despite having Page admin access
+If `/me/accounts?fields=id,name,access_token&access_token=<USER_TOKEN>` returns an
+**empty list** despite you having full admin access on the Page, it's because the
+Page belongs to the **client's** Business Portfolio while your app belongs to
+**your own** (by design, per Step 2). Personal admin access on the Page doesn't
+automatically extend to a foreign app's tokens.
 
-This happens when the Page belongs to a **different Business Portfolio** than the
-one your app is connected to (e.g. Page owned by "Client Business", app owned by
-"Your Agency"). Personal admin access on the Page doesn't automatically extend to a
-foreign app's tokens. Fix: connect the app to the client's business portfolio (next
-step) — this is a formal, one-time link, separate from your personal Page role.
-
-## Step 5 — Connect your app to the client's Business Portfolio
+**Fix — connect your app to the client's Business Portfolio:**
 
 1. business.facebook.com/settings → switch to the **client's** portfolio (top
    selector)
@@ -139,7 +123,45 @@ step) — this is a formal, one-time link, separate from your personal Page role
 4. Confirm — the app now shows in that business's Apps list, labeled "Activ deținut
    de \<Your Agency\>" — ownership stays with you, access is just extended.
 
-## Step 6 — System User token for automation (long-lived, not tied to your login)
+Once connected, the client's Pages/ad accounts appear **directly in Graph API
+Explorer's "User or Page" dropdown** by name — you no longer need the `/me/accounts`
+workaround at all for manual testing (it's still useful for scripted/automated
+token derivation later).
+
+### Gotcha 2 — `leads_retrieval` / `pages_manage_ads` don't appear in Explorer's permission search at all
+
+This is a separate problem from Gotcha 1, and fixing Gotcha 1 doesn't fix this one.
+Some permissions (leads-related ones especially) are gated behind a **use case**
+that hasn't been added to the app yet — searching for them in Explorer's "Add a
+Permission" box returns nothing until the app itself declares that use case.
+
+**Fix — add the use case first, at the app level:**
+
+1. developers.facebook.com/apps → your app → **Cazuri de utilizare** (left sidebar)
+2. **Add use cases** (top right)
+3. Filter by **"Ads and monetization"**
+4. Check **"Capture & manage ad leads with Marketing API"** (this is what unlocks
+   `leads_retrieval`; it's a distinct use case from "Create & manage ads with
+   Marketing API" added in Step 2 — you'll end up with both)
+5. **Save**
+
+Only after this does `leads_retrieval` (and `pages_manage_ads`, which the Leads API
+also demands) show up as searchable/grantable in Graph API Explorer.
+
+### Putting it together
+
+- Permissions needed for leads: `leads_retrieval`, `pages_manage_ads`,
+  `pages_show_list`, `pages_read_engagement`.
+- Always verify what actually got granted after generating a token — Explorer
+  sometimes silently drops a checked permission, especially sensitive ones:
+  ```
+  GET /me/permissions?access_token=<TOKEN>
+  ```
+  If a needed permission shows missing, redo the OAuth popup using **"Editează
+  setările"** (not the quick "Reconectează-te") to reach the explicit
+  permission-confirmation screen.
+
+## Step 5 — System User token for automation (long-lived, not tied to your login)
 
 For anything that runs unattended (a cron job, a backend tool), don't rely on a
 personal User/Page token — those expire and break if you change your password or
@@ -149,8 +171,9 @@ lose the session. Use a System User instead:
    Adaugă** → name it (e.g. `spunei-ads-integration`) → role **Admin**
 2. Select the System User → **Atribuie active** → grant **Control total** on the
    Page and/or Ad Account it needs to read
-3. **Generează un nou token** → select your app (now connected per Step 5) → tick
-   the permissions needed (`ads_read`, `leads_retrieval`, `pages_read_engagement`)
+3. **Generează un nou token** → select your app (now connected per Step 4) → tick
+   the permissions needed (`ads_read`, `leads_retrieval`, `pages_manage_ads`,
+   `pages_read_engagement`)
 4. Set expiration to **never**, if offered
 
 Store this token as the long-lived credential for the cron/tool. Nothing about it

@@ -179,6 +179,29 @@ lose the session. Use a System User instead:
 Store this token as the long-lived credential for the cron/tool. Nothing about it
 depends on any individual's personal Facebook session.
 
+## What the Marketing API can and can't extract (confirmed 2026-07-03)
+
+Verified live against a real account (`ads_read`/`ads_management` scopes, no extra
+permissions needed beyond Step 3/4):
+
+| Data | Field / endpoint | Status |
+|---|---|---|
+| Ad copy (primary text, headline, description, CTA) | `creative{body,title,object_story_spec}` | ✅ Confirmed — see `meta-fetch.py` |
+| Multiple dynamic text/headline variants | `creative.asset_feed_spec` | ✅ Confirmed |
+| Static image URL | `creative.image_url` / `thumbnail_url` | ✅ Confirmed |
+| Video metadata (duration, permalink) | `GET /{video_id}?fields=length,permalink_url` | ✅ Confirmed — caught a real 35.92s video running as a Reel (15s max recommended) |
+| Video file itself (downloadable) | `GET /{video_id}?fields=source` | ❌ Not returned for ads-delivered video (likely rights/licensing restriction) — works for Page-posted videos, not ad creatives |
+| Learning phase status per ad set | `GET /{adset_id}?fields=learning_stage_info` | ✅ Confirmed — returns `status: LEARNING \| LEARNING_LIMITED \| SUCCESS \| FAIL` + `conversions` count. Matches the "Învățare limitată" badge in Ads Manager UI exactly. |
+| Meta's own optimization recommendations | `GET /{ad_account_id}/recommendations` | ✅ Confirmed, and genuinely high-value — returned a `FRAGMENTATION` recommendation naming two specific overlapping ad sets, matching a finding we'd independently spotted manually. Also flags conversion-optimization and creative (auto-music) opportunities. No extra permission required. |
+| Campaign/ad set structure, budget, bid strategy, targeting spec | `campaigns`/`adsets` fields (`daily_budget`, `bid_strategy`, `targeting`, `optimization_goal`) | ✅ Confirmed |
+| Pixel health (last fired time, setup) | `{ad_account_id}/adspixels` | ✅ Confirmed |
+
+**Takeaway for the future `meta-ads.js` tool**: `learning_stage_info` and
+`/recommendations` are the highest-value fields to include — they surface Meta's
+own diagnosis of budget fragmentation and optimization issues without any manual
+audit work. Both work with the same `ads_read`/`ads_management` scopes already
+covered in Step 3, no incremental permission cost.
+
 ## Token handling hygiene
 
 - Public identifiers (App ID, Ad Account ID, Page ID) are fine to paste anywhere,

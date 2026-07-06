@@ -126,6 +126,24 @@ return { props: {} };
 
 Include `<lastmod>` from `updatedAt`, sensible `<priority>` (1.0 homepage, 0.8 categories, 0.7 leaf products, 0.5 blog posts), and `<changefreq>`. Paginate API calls (per_page=100+) to handle scale.
 
+**Image sitemap extension — required for product images to appear in Google Search.** A page can have a fully correct on-page gallery and a valid `ProductJsonLd` and still never get an image thumbnail in search results, because Google Images relies heavily on the `image` sitemap extension for discovery — not just on-page `<img>` tags or Product schema. This is the #1 cause of "our SEO is solid but competitors show product photos and we don't."
+
+```js
+const toXml = (urls) =>
+  `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${urls.join('')}
+</urlset>`;
+
+// per product URL:
+`<url><loc>${url}</loc>${images.map(i => `<image:image><image:loc>${i}</image:loc></image:image>`).join('')}</url>`;
+```
+
+Rules:
+- Every `<image:loc>` must be a real, distinct, publicly-accessible image URL for that specific entity — never the same generic placeholder/OG image repeated across every URL (same anti-pattern as reusing an OG image in Product schema).
+- Verify the image actually serves `Content-Type: image/*`, not `application/octet-stream` — a common bug when uploads go through a raw S3/DigitalOcean Spaces `PutObjectCommand` without an explicit `ContentType` param. `curl -sI <image-url> | grep -i content-type` to check.
+- `next-sitemap` doesn't support `<image:image>` out of the box; either add a custom `transform` in its config or keep a custom SSR `pages/sitemap.xml.js` for entities that need image entries.
+
 ### 1.5 robots.txt
 
 `public/robots.txt`:
@@ -605,6 +623,8 @@ echo "https://search.google.com/test/rich-results?url=https://[domain]/[path]"
 - [ ] All `<img>` have alt attributes
 - [ ] Exactly one `<h1>` per page
 - [ ] Sitemap includes the new page
+- [ ] Sitemap includes `<image:image>` entries with real (non-generic, non-duplicate) image URLs for pages with a gallery/hero image
+- [ ] Those image URLs serve `Content-Type: image/*`, not `application/octet-stream`
 - [ ] Page is linked from at least one other indexable page
 - [ ] Page loads in < 3s on 4G (run Lighthouse)
 - [ ] Page is reachable in ≤ 3 clicks from homepage
@@ -640,6 +660,9 @@ These are immediate manual-penalty risks or wasted-effort moves. Refuse if the u
 | `noindex` left on after launch | Page never indexed | Quarterly grep for stray noindex |
 | Canonical pointing to a different page's content | Page gets removed from index | Self-canonical unless intentionally consolidating |
 | Long auto-generated URL slugs with stop words | Lower CTR, harder to share | Short, descriptive, primary keyword |
+| Sitemap with no `<image:image>` entries on product/gallery pages | Google Images has nothing to discover the real product photos from — this alone can explain "our SEO is solid but no product images in search" even with correct on-page images and schema | Add the `image` sitemap namespace with one `<image:image>` per real image |
+| Same generic/OG placeholder image repeated in every `<image:image>` or Product-schema `image` field | Google can't tell which image belongs to which product; looks non-representative | Point to the entity's own real image(s), fallback only if the entity truly has none |
+| Uploaded images served with `Content-Type: application/octet-stream` | Some crawlers are less reliable at treating it as an indexable image even though the bytes are a valid image | Set `ContentType` explicitly on S3/Spaces `PutObjectCommand` uploads (e.g. `image/webp`) |
 
 ## How to start an audit
 

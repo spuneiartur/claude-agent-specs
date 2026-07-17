@@ -168,7 +168,8 @@ personal User/Page token — those expire and break if you change your password 
 lose the session. Use a System User instead:
 
 1. Client's Business Settings → **Utilizatori → Utilizatori de sistem** → **+
-   Adaugă** → name it (e.g. `spunei-ads-integration`) → role **Admin**
+   Adaugă** → name it (e.g. `spunei-ads-integration`) → role **Angajat** (see
+   Gotcha 3 for why not Admin)
 2. Select the System User → **Atribuie active** → grant **Control total** on the
    Page and/or Ad Account it needs to read
 3. **Generează un nou token** → select your app (now connected per Step 4) → tick
@@ -178,6 +179,28 @@ lose the session. Use a System User instead:
 
 Store this token as the long-lived credential for the cron/tool. Nothing about it
 depends on any individual's personal Facebook session.
+
+### Gotcha 3 — "maximum number of admin system users reached" (limit is 1 per Business)
+
+A non-verified/standard Business Portfolio allows only **1 System User with role
+Admin**. If that slot is already taken by an existing integration (e.g. a
+WhatsApp/messaging system user), creating a new one with role Admin fails with this
+error. Fix: create the new System User with role **Angajat (Employee)** instead —
+it can still get full ("Control total") access to specific assigned assets at Step
+5.2, it just doesn't get implicit access to *every* asset in the business the way
+Admin does. For a purpose-built integration that only needs one Page + one Ad
+Account, Employee is not just a workaround, it's the better-scoped choice anyway.
+
+### Gotcha 4 — "Clienți potențiali" (Leads) checkbox won't stay checked on asset assignment
+
+When assigning an asset (Page) to the System User via **Atribuie active** and using
+a "select all" / "full control" toggle for that asset's permission categories, the
+**Clienți potențiali (Leads)** checkbox specifically reverts to unchecked even
+though every other category stays checked. This happens regardless of role
+(Admin/Employee). You have to open the asset's permission list again after the bulk
+toggle and check **Clienți potențiali** by itself, manually, then save. Without
+this, `leads_retrieval` calls will fail even though the permission was granted at
+the app/token level (Steps 3–4) — the asset-level Leads access is a separate gate.
 
 ## What the Marketing API can and can't extract (confirmed 2026-07-03)
 

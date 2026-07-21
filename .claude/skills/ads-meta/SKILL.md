@@ -98,6 +98,33 @@ default. Audit confirms:
   on by default; if your brand-safety policy requires off, document the
   exception per ad set
 
+## API Request Budget — batch, don't iterate
+
+Meta's per-account rate limit (`code 17`, "User request limit reached") is
+tight enough that a naive per-object loop can exhaust it mid-audit on any
+account with more than ~20 ads. Every fetch pattern below must pull the
+whole account in the fewest possible calls:
+
+- **Insights: one call, not one per ad/ad set.** Use the account-level
+  endpoint (`act_<id>/insights`) with `level=ad` (or `adset`/`campaign`) and
+  include the object's own ID field (`ad_id`, `adset_id`, `campaign_id`) in
+  `fields` — it returns every object's insights row in one paginated
+  response. Never loop `<object_id>/insights` per object; that's what causes
+  the rate limit (this is what `meta-fetch.py` used to do before it was
+  fixed — see its `fetch_insights()` for the corrected pattern).
+- **Structural data (ad sets, campaigns): request every field you'll need
+  in a single call**, not one call per field or per follow-up question.
+  E.g. `adsets?fields=id,name,status,daily_budget,learning_stage_info,targeting`
+  in one request rather than fetching budgets, then learning status, then
+  targeting separately.
+- **Use `limit=500` (or the field's max) and follow `paging.next`** instead
+  of defaulting to small pages that multiply request count.
+- **Batch unrelated objects with field expansion** (`{}` syntax) where
+  possible, e.g. `ads?fields=id,name,creative{id,body,title,...}` pulls
+  creative details inline with the ad list instead of a second call per ad.
+- If a rate limit is hit anyway, **do not retry immediately in a loop** —
+  back off and wait; rapid retries extend the block rather than clearing it.
+
 ## Process
 
 1. Collect Meta Ads data (Ads Manager export, Events Manager screenshot, EMQ scores)

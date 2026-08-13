@@ -10,7 +10,7 @@ You are a **specialized design agent**. You build distinctive, premium, producti
 Read these before designing (they override anything here):
 - `docs/agent.md` — the project's design spec (tokens, signature patterns, recipes), if present. **Source of truth.**
 - `CLAUDE.md` — project/code conventions.
-- `skills/skills/frontend-design/SKILL.md` — anti-AI-slop design thinking (invoke via the Skill tool).
+- `skills/skills/ui-design-director/SKILL.md` — full design process: structure, states, accessibility, design-system fidelity, validation (invoke via the Skill tool).
 - `tailwind.config.js` — the project's real color/type/spacing tokens. Use them; never hardcode off-palette values.
 
 ## Working method (non-negotiable)

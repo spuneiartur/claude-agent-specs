@@ -1,28 +1,28 @@
 # Admin CRUD Patterns Reference
 
-This file contains the exact code patterns extracted from the article CRUD implementation. Use these as templates when generating files for a new entity.
+Exact code templates for generating a new admin entity. These match the live implementations in `examples/components/Todos/` and `examples/data/todo-columns.js` — when in doubt, read those files, they are the running reference.
 
 ## API Service Pattern
 
-**Source:** `api/article.js`
+**Source:** `api/article.js` · exports ordered A-Z
 
 ```js
 import { axiosAuth } from '@lib';
-
-export const getArticle = (id) => {
-  return axiosAuth.get(`/admin/articles/${id}`);
-};
 
 export const createArticle = (data) => {
   return axiosAuth.post('/admin/articles', data);
 };
 
-export const updateArticle = ({ id, data }) => {
-  return axiosAuth.put(`/admin/articles/${id}`, data);
-};
-
 export const deleteArticle = (id) => {
   return axiosAuth.delete(`/admin/articles/${id}`);
+};
+
+export const getArticle = (id) => {
+  return axiosAuth.get(`/admin/articles/${id}`);
+};
+
+export const updateArticle = ({ id, data }) => {
+  return axiosAuth.put(`/admin/articles/${id}`, data);
 };
 ```
 
@@ -34,13 +34,13 @@ export const deleteArticle = (id) => {
 import * as Yup from 'yup';
 
 export const validationSchema = Yup.object().shape({
-  title: Yup.string().required('Title is required'),
+  title: Yup.string().required('Titlul este obligatoriu'),
   slug: Yup.string()
-    .required('Slug is required')
-    .matches(/^[a-z0-9_-]+$/, 'Slug can only contain lowercase letters, numbers, hyphens and underscores')
-    .min(2, 'Slug must be at least 2 characters')
-    .max(100, 'Slug cannot exceed 100 characters'),
-  status: Yup.string().oneOf(['draft', 'published']).required('Status is required'),
+    .required('Slug-ul este obligatoriu')
+    .matches(/^[a-z0-9_-]+$/, 'Slug-ul poate conține doar litere mici, cifre, cratime și underscore')
+    .min(2, 'Slug-ul trebuie să aibă cel puțin 2 caractere')
+    .max(100, 'Slug-ul nu poate depăși 100 de caractere'),
+  status: Yup.string().oneOf(['draft', 'published']).required('Statusul este obligatoriu'),
   // Add entity-specific fields here
 });
 
@@ -51,6 +51,8 @@ export const initialValues = {
   // Match all fields from validationSchema
 };
 ```
+
+Keep the messages identical to the backend Yup schema for the same field — otherwise the user sees two different wordings for one rule.
 
 ## Filter Model Pattern
 
@@ -74,42 +76,99 @@ export const initialValues = {
 };
 ```
 
-## Table Columns Pattern
+## Table Columns Pattern — TanStack Table v8
 
-**Source:** `data/article-columns.js`
+**Source:** `examples/data/todo-columns.js`
 
 ```js
-import { FormattedTime } from '@components';
+import { Time } from '@components';
 import { EntityActionsCell, EntityStatusCell } from '@components/Admin/Entity';
 
 const entityColumns = [
   {
-    Header: 'Name',
-    accessor: 'name',
+    id: 'name',
+    header: 'Nume',
+    accessorKey: 'name',
     extraClass: 'font-medium text-gray-900',
   },
   {
-    Header: 'Status',
-    accessor: 'status',
-    Cell: EntityStatusCell,
-    extraClass: 'w-24 text-center font-medium text-gray-900',
+    id: 'author',
+    header: 'Autor',
+    accessorKey: 'identity.name',   // dot notation for nested values
   },
   {
-    Header: 'Created',
-    accessor: 'createdAt',
-    Cell: FormattedTime,
-    extraClass: 'w-32 font-medium text-gray-900',
+    id: 'status',
+    header: 'Status',
+    accessorKey: 'status',
+    cell: EntityStatusCell,
+    extraClass: 'w-24 text-center',
   },
   {
-    Header: 'Actions',
-    accessor: '_id',
-    Cell: EntityActionsCell,
-    extraClass: 'w-32 text-center font-medium text-gray-900',
+    id: 'createdAt',
+    header: 'Creat la',
+    accessorKey: 'createdAt',
+    cell: Time,
+    extraClass: 'w-32',
+  },
+  {
+    id: 'actions',
+    header: 'Acțiuni',
+    accessorKey: '_id',
+    cell: EntityActionsCell,
+    extraClass: 'w-32 text-center',
   },
 ];
 
 export default entityColumns;
 ```
+
+### Why the shape matters
+
+`TableSuccess.jsx` hands the array straight to `useReactTable`, then:
+
+```jsx
+// TableHeader.jsx
+flexRender(column.columnDef.header, column.getContext?.())
+// TableRow.jsx
+flexRender(cell.column.columnDef.cell, cell.getContext())
+```
+
+v6 keys (`Header`, `accessor`, `Cell`) are not part of `columnDef` in v8. They are ignored without warning — the table renders the right number of rows with blank headers and blank cells.
+
+`extraClass` is a project-specific extra read by `TableHeader.jsx` for column widths. TanStack passes unknown keys through untouched.
+
+## Cell Component Pattern
+
+Every `cell` component receives the TanStack **cell context**, not a `value` prop:
+
+```
+{ getValue, row, column, table, cell, renderValue, getContext }
+```
+
+- `getValue()` — the value at this column's `accessorKey`
+- `row.original` — the full document, for reading sibling fields
+
+```jsx
+import { Pill } from '@components';
+
+const statusConfig = {
+  published: { label: 'Publicat', className: 'bg-green-50 text-green-700 border-green-200' },
+  draft: { label: 'Ciornă', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
+};
+
+const EntityStatusCell = ({ getValue }) => {
+  const config = statusConfig[getValue()] ?? {
+    label: 'Necunoscut',
+    className: 'bg-gray-50 text-gray-700 border-gray-200',
+  };
+
+  return <Pill className={`border ${config.className}`}>{config.label}</Pill>;
+};
+
+export default EntityStatusCell;
+```
+
+Components reused as cells must follow the same contract. `Time` from `@components` already does — that is why it can be dropped straight into a column.
 
 ## Add Form Pattern
 
@@ -128,31 +187,37 @@ const AddEntityForm = () => {
   const router = useRouter();
   const mutation = useMutation(createEntity, {
     invalidateQueries: 'admin/entities',
-    successCallback: () => router.push('/admin/entities'),
+    successCallback: () => router.push('/mgt-portal/admin/entities'),
   });
 
   const handleSubmit = async (data) => mutation.mutateAsync(data);
 
   return (
-    <HookForm initialValues={initialValues} validationSchema={validationSchema} onSubmit={handleSubmit}>
+    <HookForm
+      initialValues={initialValues}
+      validationSchema={validationSchema}
+      onSubmit={handleSubmit}
+    >
       <Form>
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-6">
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                {mutation.isPending ? 'Saving...' : 'Ready to save?'}
-              </div>
-              <div className="flex items-center space-x-3">
-                <Button onClick={() => router.push('/admin/entities')} className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors font-medium">
-                  Cancel
-                </Button>
-                <Submit disabled={mutation.isPending}>
-                  {mutation.isPending ? 'Saving...' : 'Create Entity'}
-                </Submit>
-              </div>
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between px-6 py-4">
+            <p className="text-sm text-gray-600">
+              {mutation.isPending ? 'Se salvează...' : 'Gata de salvare?'}
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => router.push('/mgt-portal/admin/entities')}
+                className="rounded-md px-4 py-2 font-medium text-gray-600 hover:bg-gray-100"
+              >
+                Anulează
+              </Button>
+              <Submit disabled={mutation.isPending}>
+                {mutation.isPending ? 'Se salvează...' : 'Creează'}
+              </Submit>
             </div>
           </div>
         </div>
+
         <EntityForm />
       </Form>
     </HookForm>
@@ -161,6 +226,8 @@ const AddEntityForm = () => {
 
 export default AddEntityForm;
 ```
+
+`Button` renders `<button type="button">` by default, so the Cancel button will not submit the form.
 
 ## Edit Form Pattern
 
@@ -179,7 +246,7 @@ const EditEntityForm = ({ entity }) => {
   const router = useRouter();
   const mutation = useMutation(updateEntity, {
     invalidateQueries: 'admin/entities',
-    successCallback: () => router.push('/admin/entities'),
+    successCallback: () => router.push('/mgt-portal/admin/entities'),
   });
 
   const handleSubmit = async (data) => mutation.mutateAsync({ id: entity._id, data });
@@ -187,23 +254,25 @@ const EditEntityForm = ({ entity }) => {
   return (
     <HookForm initialValues={entity} validationSchema={validationSchema} onSubmit={handleSubmit}>
       <Form>
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-6">
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                {mutation.isPending ? 'Updating...' : 'Ready to save changes?'}
-              </div>
-              <div className="flex items-center space-x-3">
-                <Button onClick={() => router.push('/admin/entities')} className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors font-medium">
-                  Cancel
-                </Button>
-                <Submit disabled={mutation.isPending}>
-                  {mutation.isPending ? 'Updating...' : 'Update Entity'}
-                </Submit>
-              </div>
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between px-6 py-4">
+            <p className="text-sm text-gray-600">
+              {mutation.isPending ? 'Se actualizează...' : 'Gata de salvare?'}
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => router.push('/mgt-portal/admin/entities')}
+                className="rounded-md px-4 py-2 font-medium text-gray-600 hover:bg-gray-100"
+              >
+                Anulează
+              </Button>
+              <Submit disabled={mutation.isPending}>
+                {mutation.isPending ? 'Se actualizează...' : 'Actualizează'}
+              </Submit>
             </div>
           </div>
         </div>
+
         <EntityForm />
       </Form>
     </HookForm>
@@ -218,29 +287,28 @@ export default EditEntityForm;
 **Source:** `components/Forms/ArticleForm.jsx`
 
 ```jsx
-import { Input, Textarea, Dropdown, SlugInput } from '@components/Fields';
+import { Dropdown, Input, Textarea } from '@components/Fields';
 import { Field } from '@components/HookForm';
-import { useFormContext } from 'react-hook-form';
 
 const statusOptions = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'published', label: 'Published' },
+  { value: 'draft', label: 'Ciornă' },
+  { value: 'published', label: 'Publicat' },
 ];
 
 const EntityForm = () => {
-  const { formState } = useFormContext();
-
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div className="p-6 space-y-4">
-        <Field as={Input} name="title" label="Title" placeholder="Enter title" required />
-        <SlugInput sourceField="title" placeholder="url-slug" required />
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="space-y-4 p-6">
+        <Field as={Input} name="title" label="Titlu" placeholder="Introdu titlul" />
+        <Field as={Input} name="slug" label="Slug" placeholder="url-slug" />
+        <Field as={Textarea} name="description" label="Descriere" rows={4} />
         <Field as={Dropdown} name="status" label="Status">
           {statusOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
           ))}
         </Field>
-        {/* Add entity-specific fields */}
       </div>
     </div>
   );
@@ -249,20 +317,33 @@ const EntityForm = () => {
 export default EntityForm;
 ```
 
+`Field` sets `id` from `name` automatically — you don't need to pass it. Only call `useFormContext()` when you actually need to watch another field.
+
+There is no `SlugInput` component in the starter. If the project needs auto-slug-from-title, build it as a project component (`components/Fields/SlugInput.jsx`) using `useFormContext` + `watch('title')`; don't import it as if it already existed.
+
 ## Key Import Paths
 
 | What | Import From |
 |------|------------|
 | axiosAuth | `@lib` |
 | checkAuth, withAuth | `@auth` |
-| Layout, Button, AreYouSure | `@components` |
-| Field, Form, HookForm, Submit, ArrayField | `@components/HookForm` |
-| AutoSubmitFilterForm | `@components/HookForm/AutoSubmitFilterForm` |
-| Input, Textarea, Dropdown, Search, DatePicker, SlugInput | `@components/Fields` |
-| TableColumns, TableLoading, TableError, TableSuccess | `@components/Tables` |
-| LoadMoreOnClick | `@components/Buttons` |
-| useQuery, useInfiniteQuery, useMutation, useDisclosure | `@hooks` |
-| FormattedTime | `@components` |
+| AreYouSure, Bone, Button, Layout, Pill, Time | `@components` |
+| ArrayField, AutoSubmitForm, Field, Form, HookForm, Submit | `@components/HookForm` |
+| DatePicker, Dropdown, Input, Search, Textarea | `@components/Fields` |
+| TableColumns, TableError, TableLoading, TableSuccess | `@components/Tables` |
+| LoadMoreOnClick, LoadMoreOnScroll | `@components/Buttons` |
+| useDisclosure, useInfiniteQuery, useMutation, useQuery | `@hooks` |
 | useFormContext | `react-hook-form` |
 | useRouter | `next/router` |
+| Icons | `lucide-react` |
 | Yup | `yup` |
+
+## Gotchas
+
+1. **React Query v5 status is `'pending'`, not `'loading'`.** A `status === 'loading'` branch never runs, so the skeleton never shows and the page looks broken while fetching.
+2. **`useInfiniteQuery` already flattens.** Its `select` returns `{ pages, pageParams }` where `pages` is a flat array of documents. Pass `data` to `TableSuccess` as-is.
+3. **Cell components get the TanStack context**, not `{ value, row: { original } }`. Use `getValue()` and `row.original`.
+4. **`enabled: Boolean(id)`** on the edit page — `router.query` is empty on first render of a dynamic route.
+5. **Admin hrefs need the `/mgt-portal` prefix** when `next.config.js` rewrites `/mgt-portal/admin/:path*` → `/admin/:path*` and redirects `/admin/:path*` → `/404`. Check before generating.
+6. **`important: true` in `tailwind.config.js`** — every utility emits `!important`. Custom CSS overrides need higher specificity.
+7. **Colors are per project.** `metal-*` and `accent` exist in some projects and not in others. Read `tailwind.config.js`.

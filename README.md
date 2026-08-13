@@ -36,7 +36,7 @@ Each directory contains:
 | api-hook-wiring | Wire up API hooks with React Query |
 | custom-hook | Generate custom React hooks |
 | theme-factory | Apply and manage design themes |
-| frontend-design | UI/UX design patterns |
+| ui-design-director | UI/UX design process: structure, states, accessibility, validation |
 | canvas-design | Canvas-based design generation |
 | scroll-stop-builder | Build scroll-stop sections |
 | 3d-website-asset-generation | Generate 3D website assets |
